@@ -1,0 +1,268 @@
+<!doctype html>
+<html>
+	<head>
+        <meta charset="utf-8">
+		<title>McHead – Minecraft skin avatar generator</title>
+        <link href="styles.css" rel="stylesheet" type="text/css">
+	</head>
+	
+	<body>
+<!-- Root element of the application -->
+<div class="main">
+    <div class="options">
+        <h1>McHead</h1>
+        
+        <p>Hello, there! This is a simple avatar generator based on a Minecraft skin.</p>
+        <p>Configure options below to get desirable result.</p>
+        
+        <h2>Options</h2>
+        
+        <!-- NEW: Search Bar Section -->
+        <div class="search-section">
+            <h3>Kirka Profile Lookup</h3>
+            <p>
+                <input type="text" id="userIdInput" placeholder="Enter user ID (e.g., NUGGET or #NUGGET)" />
+                <button id="searchBtn">Search Profile</button>
+            </p>
+            <div id="searchResult" class="search-result"></div>
+            <hr>
+        </div>
+        
+        <p>
+            <input name="texture" type="file" title="Minecraft skin">
+        </p>
+        
+        <p>
+            <label>
+                <input name="head" type="checkbox" checked="checked"> Head Only
+            </label>
+        </p>
+        <p>
+            <label>
+                <input name="flat" type="checkbox" checked="checked"> Flat
+            </label>
+        </p>
+        <p>
+            <label>
+                <input name="outer" type="checkbox" checked="checked"> Include Hair
+            </label>
+        </p>
+        <p>
+            <label>
+                <input name="alex" type="checkbox"> Alex skin (3px arm)
+            </label>
+        </p>
+        <p><input name="y" type="number" value="45"> Yaw</p>
+        <p><input name="x" type="number" value="45"> Pitch</p>
+        <p><button id="reset">Reset Rotation</button></p>
+        
+        <hr>
+        
+        <p>
+            When you're done, simply right click the output image, and choose 
+            "Save Image as...," and save the image as <code>*.png</code> to 
+            desired location.
+        </p>
+        
+        <p>
+            Version <span id="version">-1</span>.
+            Created by <a href="http://github.com/mchorse/">McHorse</a>, hosted 
+            on <a href="http://github.com/mchorse/mchead/">github</a>.
+        </p>
+    </div>
+    
+    <div class="canvas">
+        <h2>Canvas</h2>
+    </div>
+    
+    <div class="output">
+        <h2>Output</h2>
+        <img id="output">
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r79/three.min.js"></script>
+<script src="app.js"></script>
+<script>
+    /** McHead bootstrap application */
+    var options = McHead.dom.$(".options"),
+        canvas = McHead.dom.$(".canvas"),
+        output = McHead.dom.$("#output");
+    
+    McHead.dom.$("#version").innerHTML = McHead.version;
+
+    var app = new McHead.App(options, canvas, output, 256, 512);
+    app.init();
+    
+    // NEW: Search functionality
+    (function setupSearch() {
+        var searchBtn = document.getElementById('searchBtn');
+        var userIdInput = document.getElementById('userIdInput');
+        var searchResult = document.getElementById('searchResult');
+        
+        // Function to normalize userId (add # if not present)
+        function normalizeUserId(userId) {
+            userId = userId.trim();
+            if (!userId) return null;
+            // If it doesn't start with #, add it
+            if (!userId.startsWith('#')) {
+                return '#' + userId;
+            }
+            return userId;
+        }
+        
+        // Function to fetch skin texture from AllItemData.json
+        async function fetchSkinTexture(skinName) {
+            try {
+                const response = await fetch('https://raw.githubusercontent.com/OBS-Akuma/KirkaSkins/refs/heads/main/AllItemData.json');
+                if (!response.ok) throw new Error('Failed to fetch skin data');
+                const items = await response.json();
+                
+                // Find item by name (case-insensitive)
+                const skinItem = items.find(item => 
+                    item.type === 'BODY_SKIN' && 
+                    item.name.toLowerCase() === skinName.toLowerCase()
+                );
+                
+                if (skinItem && skinItem.textureUrl) {
+                    return skinItem.textureUrl;
+                }
+                return null;
+            } catch (error) {
+                console.error('Error fetching skin texture:', error);
+                return null;
+            }
+        }
+        
+        // Function to load texture from URL and apply to model
+        function loadTextureFromUrl(url, app) {
+            // Check if it's a Minecraft skin (based on URL or we need to convert)
+            // Since Kirka textures might not be Minecraft skins, we need to handle this
+            // For now, we'll try to load as is, but note that Kirka textures are different format
+            
+            // Method 1: Try to load as Minecraft skin
+            var img = new Image();
+            img.crossOrigin = "Anonymous";
+            
+            img.onload = function() {
+                var w = this.width, h = this.height;
+                // Check if it's a valid Minecraft skin (64x32 or 64x64)
+                if ((w === 64 && (h === 32 || h === 64))) {
+                    app.model.setImage(this, w, h);
+                    app.justRender();
+                    showMessage('Skin loaded successfully!', 'success');
+                } else {
+                    // Kirka textures are different - we need to create a canvas and map it
+                    console.warn('Texture is not a standard Minecraft skin format:', w, 'x', h);
+                    showMessage('Warning: This skin is not standard Minecraft format. Results may vary.', 'warning');
+                    // Still attempt to load it
+                    app.model.setImage(this, w, h);
+                    app.justRender();
+                }
+            };
+            
+            img.onerror = function() {
+                showMessage('Failed to load skin texture', 'error');
+            };
+            
+            img.src = url;
+        }
+        
+        function showMessage(message, type) {
+            searchResult.innerHTML = `<div class="message ${type}">${message}</div>`;
+            setTimeout(() => {
+                if (searchResult.innerHTML.includes(message)) {
+                    searchResult.innerHTML = '';
+                }
+            }, 5000);
+        }
+        
+        async function searchProfile() {
+            var rawUserId = userIdInput.value;
+            var normalizedUserId = normalizeUserId(rawUserId);
+            
+            if (!normalizedUserId) {
+                showMessage('Please enter a user ID', 'error');
+                return;
+            }
+            
+            // Show loading state
+            searchResult.innerHTML = '<div class="message loading">Searching...</div>';
+            searchBtn.disabled = true;
+            
+            try {
+                // Fetch profile data
+                const response = await fetch('https://www.smudgy.store/api/getprofile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        userId: normalizedUserId,
+                        isShortId: true
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (!result.success || !result.data) {
+                    showMessage('User not found or API error', 'error');
+                    return;
+                }
+                
+                const profile = result.data;
+                const activeBodySkin = profile.activeBodySkin;
+                
+                if (!activeBodySkin || !activeBodySkin.name) {
+                    showMessage('No active body skin found for this user', 'warning');
+                    return;
+                }
+                
+                const skinName = activeBodySkin.name;
+                showMessage(`Found skin: ${skinName}. Fetching texture...`, 'loading');
+                
+                // Fetch the texture URL from AllItemData.json
+                const textureUrl = await fetchSkinTexture(skinName);
+                
+                if (textureUrl) {
+                    // Display profile info
+                    searchResult.innerHTML = `
+                        <div class="message success">
+                            <strong>${profile.name || profile.shortId}</strong><br>
+                            Skin: ${skinName}<br>
+                            Level: ${profile.level} | Coins: ${profile.coins}<br>
+                            Loading texture...
+                        </div>
+                    `;
+                    
+                    // Apply the texture
+                    loadTextureFromUrl(textureUrl, app);
+                } else {
+                    searchResult.innerHTML = `
+                        <div class="message warning">
+                            <strong>${profile.name || profile.shortId}</strong><br>
+                            Skin: ${skinName}<br>
+                            ⚠️ Could not find texture URL for this skin
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showMessage('Network error or API unavailable', 'error');
+            } finally {
+                searchBtn.disabled = false;
+            }
+        }
+        
+        // Event listeners
+        searchBtn.addEventListener('click', searchProfile);
+        userIdInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchProfile();
+            }
+        });
+    })();
+</script>
+	</body>
+</html>
