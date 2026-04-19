@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+    <title>Test - Kirka API</title>
+</head>
+<body>
+    <h1>Kirka API Test</h1>
+    <input type="text" id="userId" placeholder="Enter user ID" value="NUGGET">
+    <button id="testBtn">Test API</button>
+    <pre id="result">Click the button to test...</pre>
+
+    <script>
+        // Simple test button
+        const testBtn = document.getElementById('testBtn');
+        const userIdInput = document.getElementById('userId');
+        const resultDiv = document.getElementById('result');
+        
+        testBtn.onclick = async function() {
+            let userId = userIdInput.value.trim();
+            
+            // Add # if needed
+            if (!userId.startsWith('#')) {
+                userId = '#' + userId;
+            }
+            
+            resultDiv.innerHTML = 'Loading...';
+            
+            try {
+                console.log('Sending request for:', userId);
+                
+                const response = await fetch('https://www.smudgy.store/api/getprofile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        userId: userId,
+                        isShortId: true
+                    })
+                });
+                
+                console.log('Response status:', response.status);
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                resultDiv.innerHTML = JSON.stringify(data, null, 2);
+                
+                if (data.success && data.data && data.data.activeBodySkin) {
+                    resultDiv.innerHTML += '\n\n✅ Skin found: ' + data.data.activeBodySkin.name;
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = 'Error: ' + error.message;
+            }
+        };
+    </script>
+</body>
+</html>
