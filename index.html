@@ -138,7 +138,6 @@
                 padding: 2px 8px;
             }
 
-            /* Search section styles */
             .search-section {
                 margin-bottom: 20px;
                 padding: 15px;
@@ -251,7 +250,6 @@
                 
                 <h2>Options</h2>
                 
-                <!-- Kirka Profile Lookup Section - This is the main input now -->
                 <div class="search-section">
                     <h3>🔍 Enter Kirka User ID</h3>
                     <p>
@@ -260,8 +258,6 @@
                     </p>
                     <div id="searchResult" class="search-result"></div>
                 </div>
-                
-                <!-- Removed the file upload input -->
                 
                 <p>
                     <label>
@@ -315,178 +311,89 @@
         <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r79/three.min.js"></script>
         <script src="app.js"></script>
         <script>
-            // Wait for everything to load
-            setTimeout(function() {
+            // Global app variable
+            var app = null;
+            var isAppReady = false;
+            
+            // Function to initialize the app
+            function initApp() {
+                if (typeof McHead === 'undefined') {
+                    console.log("Waiting for McHead...");
+                    setTimeout(initApp, 100);
+                    return;
+                }
+                
+                console.log("McHead loaded, initializing...");
+                
                 var options = document.querySelector(".options");
                 var canvas = document.querySelector(".canvas");
                 var output = document.getElementById("output");
                 
                 document.getElementById("version").innerHTML = "0.1.1";
                 
-                // Check if McHead is available
-                if (typeof McHead === 'undefined') {
-                    console.error("McHead not loaded!");
-                    return;
-                }
-                
-                var app = new McHead.App(options, canvas, output, 256, 512);
+                app = new McHead.App(options, canvas, output, 256, 512);
                 app.init();
+                isAppReady = true;
                 
-                // Search functionality
+                console.log("App initialized!");
+                
+                // Set up event listeners after app is ready
+                setupEventListeners();
+            }
+            
+            // Set up all event listeners
+            function setupEventListeners() {
+                // Search button
                 var searchBtn = document.getElementById('searchBtn');
                 var userIdInput = document.getElementById('userIdInput');
-                var searchResult = document.getElementById('searchResult');
-                
-                function normalizeUserId(userId) {
-                    userId = userId.trim();
-                    if (!userId) return null;
-                    if (!userId.startsWith('#')) {
-                        return '#' + userId;
-                    }
-                    return userId;
-                }
-                
-                async function fetchSkinTexture(skinName) {
-                    try {
-                        const response = await fetch('https://raw.githubusercontent.com/OBS-Akuma/KirkaSkins/refs/heads/main/AllItemData.json');
-                        if (!response.ok) throw new Error('Failed to fetch skin data');
-                        const items = await response.json();
-                        
-                        const skinItem = items.find(item => 
-                            item.type === 'BODY_SKIN' && 
-                            item.name.toLowerCase() === skinName.toLowerCase()
-                        );
-                        
-                        if (skinItem && skinItem.textureUrl) {
-                            return skinItem.textureUrl;
-                        }
-                        return null;
-                    } catch (error) {
-                        console.error('Error fetching skin texture:', error);
-                        return null;
-                    }
-                }
-                
-                function showMessage(message, type) {
-                    searchResult.innerHTML = `<div class="message ${type}">${message}</div>`;
-                    setTimeout(() => {
-                        if (searchResult.innerHTML.includes(message)) {
-                            searchResult.innerHTML = '';
-                        }
-                    }, 5000);
-                }
-                
-                async function searchProfile() {
-                    var rawUserId = userIdInput.value;
-                    var normalizedUserId = normalizeUserId(rawUserId);
-                    
-                    if (!normalizedUserId) {
-                        showMessage('Please enter a user ID', 'error');
-                        return;
-                    }
-                    
-                    searchResult.innerHTML = '<div class="message loading">🔍 Searching for user...</div>';
-                    searchBtn.disabled = true;
-                    
-                    try {
-                        const response = await fetch('https://www.smudgy.store/api/getprofile', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                                userId: normalizedUserId,
-                                isShortId: true
-                            })
-                        });
-                        
-                        const result = await response.json();
-                        
-                        if (!result.success || !result.data) {
-                            showMessage('❌ User not found', 'error');
-                            return;
-                        }
-                        
-                        const profile = result.data;
-                        const activeBodySkin = profile.activeBodySkin;
-                        
-                        if (!activeBodySkin || !activeBodySkin.name) {
-                            showMessage(`⚠️ User "${profile.name || profile.shortId}" has no active body skin`, 'warning');
-                            return;
-                        }
-                        
-                        const skinName = activeBodySkin.name;
-                        showMessage(`📦 Found: ${profile.name || profile.shortId}<br>🎨 Skin: ${skinName}<br>⏳ Loading texture...`, 'loading');
-                        
-                        const textureUrl = await fetchSkinTexture(skinName);
-                        
-                        if (textureUrl) {
-                            // Load texture directly onto the model
-                            var img = new Image();
-                            img.crossOrigin = "Anonymous";
-                            img.onload = function() {
-                                var w = this.width, h = this.height;
-                                app.model.setImage(this, w, h);
-                                app.justRender();
-                                searchResult.innerHTML = `
-                                    <div class="message success">
-                                        ✅ <strong>${profile.name || profile.shortId}</strong><br>
-                                        🎨 Skin: ${skinName} - Loaded!<br>
-                                        📊 Level: ${profile.level} | 💰 Coins: ${profile.coins.toLocaleString()}
-                                    </div>
-                                `;
-                            };
-                            img.onerror = function() {
-                                showMessage(`⚠️ Could not load texture for "${skinName}"`, 'warning');
-                            };
-                            img.src = textureUrl;
-                        } else {
-                            searchResult.innerHTML = `
-                                <div class="message warning">
-                                    ⚠️ <strong>${profile.name || profile.shortId}</strong><br>
-                                    🎨 Skin: ${skinName}<br>
-                                    ❌ Texture URL not found in skin database
-                                </div>
-                            `;
-                        }
-                        
-                    } catch (error) {
-                        console.error('Error:', error);
-                        showMessage('❌ Network error - API may be unavailable', 'error');
-                    } finally {
-                        searchBtn.disabled = false;
-                    }
-                }
                 
                 if (searchBtn) {
-                    searchBtn.addEventListener('click', searchProfile);
+                    // Remove any existing listeners
+                    var newSearchBtn = searchBtn.cloneNode(true);
+                    searchBtn.parentNode.replaceChild(newSearchBtn, searchBtn);
+                    
+                    newSearchBtn.addEventListener('click', function() {
+                        console.log("Search button clicked!");
+                        searchProfile();
+                    });
+                }
+                
+                if (userIdInput) {
                     userIdInput.addEventListener('keypress', function(e) {
                         if (e.key === 'Enter') {
+                            console.log("Enter pressed!");
                             searchProfile();
                         }
                     });
                 }
                 
-                // Reset button functionality
+                // Reset button
                 var resetBtn = document.getElementById('reset');
                 if (resetBtn) {
-                    resetBtn.addEventListener('click', function() {
+                    var newResetBtn = resetBtn.cloneNode(true);
+                    resetBtn.parentNode.replaceChild(newResetBtn, resetBtn);
+                    
+                    newResetBtn.addEventListener('click', function() {
                         var xInput = document.querySelector('[name=x]');
                         var yInput = document.querySelector('[name=y]');
                         if (xInput) xInput.value = 45;
                         if (yInput) yInput.value = 45;
-                        if (app.mouse) {
+                        if (app && app.mouse) {
                             app.mouse.setX(45);
                             app.mouse.setY(45);
                         }
-                        app.justRender();
+                        if (app) app.justRender();
                     });
                 }
                 
-                // Handle checkbox changes
+                // Checkboxes
                 var checkboxes = document.querySelectorAll('input[name="head"], input[name="outer"], input[name="flat"], input[name="alex"]');
                 checkboxes.forEach(function(checkbox) {
-                    checkbox.addEventListener('change', function() {
+                    var newCheckbox = checkbox.cloneNode(true);
+                    checkbox.parentNode.replaceChild(newCheckbox, checkbox);
+                    
+                    newCheckbox.addEventListener('change', function() {
+                        if (!app) return;
                         var name = this.name;
                         if (name === "head") app.model.headOnly(this.checked);
                         else if (name === "outer") app.model.includeHair(this.checked);
@@ -496,23 +403,181 @@
                     });
                 });
                 
-                // Handle number inputs
+                // Number inputs
                 var xInput = document.querySelector('[name=x]');
                 var yInput = document.querySelector('[name=y]');
                 if (xInput) {
-                    xInput.addEventListener('change', function() {
-                        app.mouse.setY(parseInt(this.value));
-                        app.justRender();
+                    var newXInput = xInput.cloneNode(true);
+                    xInput.parentNode.replaceChild(newXInput, xInput);
+                    
+                    newXInput.addEventListener('change', function() {
+                        if (app && app.mouse) {
+                            app.mouse.setY(parseInt(this.value));
+                            app.justRender();
+                        }
                     });
                 }
                 if (yInput) {
-                    yInput.addEventListener('change', function() {
-                        app.mouse.setX(parseInt(this.value));
-                        app.justRender();
+                    var newYInput = yInput.cloneNode(true);
+                    yInput.parentNode.replaceChild(newYInput, yInput);
+                    
+                    newYInput.addEventListener('change', function() {
+                        if (app && app.mouse) {
+                            app.mouse.setX(parseInt(this.value));
+                            app.justRender();
+                        }
                     });
                 }
+            }
+            
+            // Helper functions
+            function normalizeUserId(userId) {
+                userId = userId.trim();
+                if (!userId) return null;
+                if (!userId.startsWith('#')) {
+                    return '#' + userId;
+                }
+                return userId;
+            }
+            
+            function showMessage(message, type) {
+                var searchResult = document.getElementById('searchResult');
+                if (!searchResult) return;
+                searchResult.innerHTML = `<div class="message ${type}">${message}</div>`;
+                setTimeout(function() {
+                    if (searchResult.innerHTML.includes(message)) {
+                        searchResult.innerHTML = '';
+                    }
+                }, 5000);
+            }
+            
+            async function fetchSkinTexture(skinName) {
+                console.log("Fetching texture for skin:", skinName);
+                try {
+                    const response = await fetch('https://raw.githubusercontent.com/OBS-Akuma/KirkaSkins/refs/heads/main/AllItemData.json');
+                    if (!response.ok) throw new Error('Failed to fetch skin data');
+                    const items = await response.json();
+                    
+                    console.log("Loaded", items.length, "items");
+                    
+                    const skinItem = items.find(item => 
+                        item.type === 'BODY_SKIN' && 
+                        item.name.toLowerCase() === skinName.toLowerCase()
+                    );
+                    
+                    if (skinItem && skinItem.textureUrl) {
+                        console.log("Found texture URL:", skinItem.textureUrl);
+                        return skinItem.textureUrl;
+                    }
+                    console.log("No texture found for:", skinName);
+                    return null;
+                } catch (error) {
+                    console.error('Error fetching skin texture:', error);
+                    return null;
+                }
+            }
+            
+            async function searchProfile() {
+                console.log("searchProfile called!");
                 
-            }, 100);
+                var userIdInput = document.getElementById('userIdInput');
+                var rawUserId = userIdInput ? userIdInput.value : '';
+                
+                console.log("Raw userId:", rawUserId);
+                
+                var normalizedUserId = normalizeUserId(rawUserId);
+                
+                console.log("Normalized userId:", normalizedUserId);
+                
+                if (!normalizedUserId) {
+                    showMessage('Please enter a user ID', 'error');
+                    return;
+                }
+                
+                showMessage('🔍 Searching for user...', 'loading');
+                
+                var searchBtn = document.getElementById('searchBtn');
+                if (searchBtn) searchBtn.disabled = true;
+                
+                try {
+                    console.log("Calling API with:", {userId: normalizedUserId, isShortId: true});
+                    
+                    const response = await fetch('https://www.smudgy.store/api/getprofile', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            userId: normalizedUserId,
+                            isShortId: true
+                        })
+                    });
+                    
+                    console.log("API Response status:", response.status);
+                    
+                    const result = await response.json();
+                    console.log("API Result:", result);
+                    
+                    if (!result.success || !result.data) {
+                        showMessage('❌ User not found', 'error');
+                        return;
+                    }
+                    
+                    const profile = result.data;
+                    const activeBodySkin = profile.activeBodySkin;
+                    
+                    console.log("Profile:", profile);
+                    console.log("Active body skin:", activeBodySkin);
+                    
+                    if (!activeBodySkin || !activeBodySkin.name) {
+                        showMessage(`⚠️ User "${profile.name || profile.shortId}" has no active body skin`, 'warning');
+                        return;
+                    }
+                    
+                    const skinName = activeBodySkin.name;
+                    showMessage(`📦 Found: ${profile.name || profile.shortId}<br>🎨 Skin: ${skinName}<br>⏳ Loading texture...`, 'loading');
+                    
+                    const textureUrl = await fetchSkinTexture(skinName);
+                    
+                    if (textureUrl && app) {
+                        console.log("Loading texture from:", textureUrl);
+                        
+                        var img = new Image();
+                        img.crossOrigin = "Anonymous";
+                        img.onload = function() {
+                            console.log("Image loaded, dimensions:", this.width, "x", this.height);
+                            var w = this.width, h = this.height;
+                            app.model.setImage(this, w, h);
+                            app.justRender();
+                            showMessage(`
+                                ✅ <strong>${profile.name || profile.shortId}</strong><br>
+                                🎨 Skin: ${skinName} - Loaded!<br>
+                                📊 Level: ${profile.level} | 💰 Coins: ${profile.coins.toLocaleString()}
+                            `, 'success');
+                        };
+                        img.onerror = function(err) {
+                            console.error("Image load error:", err);
+                            showMessage(`⚠️ Could not load texture for "${skinName}"`, 'warning');
+                        };
+                        img.src = textureUrl;
+                    } else {
+                        showMessage(`
+                            ⚠️ <strong>${profile.name || profile.shortId}</strong><br>
+                            🎨 Skin: ${skinName}<br>
+                            ❌ Texture URL not found in skin database
+                        `, 'warning');
+                    }
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    showMessage('❌ Network error - API may be unavailable: ' + error.message, 'error');
+                } finally {
+                    if (searchBtn) searchBtn.disabled = false;
+                }
+            }
+            
+            // Start the app
+            initApp();
         </script>
 	</body>
 </html>
